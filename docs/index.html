@@ -38,7 +38,7 @@
             ) {
               console.log("translate url");
               // 復号鍵取得のAPIのURLに差し替える
-              context.url = './video-encripted.key' + new Date().getTime();
+              context.url = window.location.href + 'video-encripted.key' + new Date().getTime();
             }
             //// ここまでカスタマイズ
 
