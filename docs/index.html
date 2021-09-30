@@ -1,172 +1,170 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset="utf-8">
-
+    <meta charset="utf-8" />
   </head>
   <body>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <div id="message"></div>
     <video id="video" width="400" height="300" controls autoplay repeat></video>
+
     <script>
-
-    // カスタムローダ用のConfig. Credential 等を設定する
-    var config = {
-      xhrSetup: function(xhr, url) {
-        xhr.withCredentials = true; // do send cookie
-        xhr.setRequestHeader('Authorization', 'hogehoge'); // 認証トークンなど
-      },
-    };
-
-    if(Hls.isSupported()) {
-        var video = document.getElementById('video');
-
-        // Defaultのloaderを継承 (prototype) して、loadInternalをoverride
-        class customLoader extends Hls.DefaultConfig.loader {
-        
-            // Customize した loadInternalメソッド
-          loadInternal() {
-            let xhr,
+      // Defaultのloaderを継承 (prototype) して、loadInternalをoverride
+      class customLoader extends Hls.DefaultConfig.loader {
+        // Customize した loadInternalメソッド
+        loadInternal() {
+          let xhr,
             context = this.context;
-            xhr = this.loader = new XMLHttpRequest();
-            console.log(`url=${context.url}`)
-            // debugger
+          xhr = this.loader = new XMLHttpRequest();
+          console.log(`url=${context.url}`);
+          // debugger
 
-            // ここからカスタマイズ開始
-            // ここで鍵URLかどうかの判定を行う
-            if (
-              context.url === 'video://decryptkey'
-            ) {
-              console.log("translate url");
-              // 復号鍵取得のAPIのURLに差し替える
-              context.url = window.location.href + 'video-encripted.key?' + new Date().getTime();
-            }
-            //// ここまでカスタマイズ
+          // ここからカスタマイズ開始
+          // ここで鍵URLかどうかの判定を行う
+          if (context.url === "video://decryptkey") {
+            console.log("translate url");
+            // 復号鍵取得のAPIのURLに差し替える
+            context.url =
+              window.location.href +
+              "video-encripted.key?" +
+              new Date().getTime();
+          }
+          //// ここまでカスタマイズ
 
-            let stats = this.stats;
-            stats.tfirst = 0;
-            stats.loaded = 0;
-            const xhrSetup = this.xhrSetup;
+          let stats = this.stats;
+          stats.tfirst = 0;
+          stats.loaded = 0;
+          const xhrSetup = this.xhrSetup;
 
-            try {
-              if (xhrSetup) {
-                try {
-                  xhrSetup(xhr, context.url);
-                } catch (e) {
-                  // fix xhrSetup: (xhr, url) => {xhr.setRequestHeader("Content-Language", "test");}
-                  // not working, as xhr.setRequestHeader expects xhr.readyState === OPEN
-                  xhr.open('GET', context.url, true);
-                  xhrSetup(xhr, context.url);
-                }
+          try {
+            if (xhrSetup) {
+              try {
+                xhrSetup(xhr, context.url);
+              } catch (e) {
+                // fix xhrSetup: (xhr, url) => {xhr.setRequestHeader("Content-Language", "test");}
+                // not working, as xhr.setRequestHeader expects xhr.readyState === OPEN
+                xhr.open("GET", context.url, true);
+                xhrSetup(xhr, context.url);
               }
-              if (!xhr.readyState) {
-                xhr.open('GET', context.url, true);
-              }
-            } catch (e) {
-              // IE11 throws an exception on xhr.open if attempting to access an HTTP resource over HTTPS
-              this.callbacks.onError(
-                {code: xhr.status, text: e.message},
-                context,
-                xhr,
-              );
-              return;
             }
-
-            if (context.rangeEnd) {
-              xhr.setRequestHeader(
-                'Range',
-                'bytes=' + context.rangeStart + '-' + (context.rangeEnd - 1),
-              );
+            if (!xhr.readyState) {
+              xhr.open("GET", context.url, true);
             }
-
-            xhr.onreadystatechange = this.readystatechangeHook.bind(this);
-            xhr.onprogress = this.loadprogress.bind(this);
-            xhr.responseType = context.responseType;
-
-            // setup timeout before we perform request
-            this.requestTimeout = window.setTimeout(
-              this.loadtimeout.bind(this),
-              this.config.timeout,
+          } catch (e) {
+            // IE11 throws an exception on xhr.open if attempting to access an HTTP resource over HTTPS
+            this.callbacks.onError(
+              { code: xhr.status, text: e.message },
+              context,
+              xhr
             );
-            xhr.send();
+            return;
           }
 
-          readystatechangeHook(response) {
-            console.log("data arrived");
-
-            const { context, loader: xhr, stats } = this;
-            if (!context || !xhr) {
-              return;
-            }
-            const readyState = xhr.readyState;
-            const config = this.config;
-
-            if (readyState === 4 &&
-              xhr.responseURL.indexOf('video-encripted.key') > 0 &&
-              context.responseType === 'arraybuffer'
-            ){
-              xhr.onreadystatechange = null;
-              xhr.onprogress = null;
-              const status = xhr.status;
-              // http status between 200 to 299 are all successful
-              if (status >= 200 && status < 300) {
-                stats.loading.end = Math.max(
-                  self.performance.now(),
-                  stats.loading.first
-                );
-                let data = xhr.response;
-                let target = new Uint8Array( data );
-                // 受信したデータを復号化
-                for(let i = 0 ; i < 16 ; i++ ) {
-                  target[i] = target[i] ^ 0xff;
-                }
-                data = target.buffer;
-
-                let len = data.byteLength;
-                stats.loaded = stats.total = len;
-
-                if (!this.callbacks) {
-                  return;
-                }
-                const onProgress = this.callbacks.onProgress;
-                if (onProgress) {
-                  onProgress(stats, context, data, xhr);
-                }
-                if (!this.callbacks) {
-                  return;
-                }
-                const response = {
-                  url: xhr.responseURL,
-                  data: data,
-                };
-                this.callbacks.onSuccess(response, stats, context, xhr);
-              }
-              return;
-            }
-
-            this.readystatechange();
+          if (context.rangeEnd) {
+            xhr.setRequestHeader(
+              "Range",
+              "bytes=" + context.rangeStart + "-" + (context.rangeEnd - 1)
+            );
           }
 
+          xhr.onreadystatechange = this.readystatechangeHook.bind(this);
+          xhr.onprogress = this.loadprogress.bind(this);
+          xhr.responseType = context.responseType;
+
+          // setup timeout before we perform request
+          this.requestTimeout = window.setTimeout(
+            this.loadtimeout.bind(this),
+            this.config.timeout
+          );
+          xhr.send();
         }
-        // customLoader.prototype = new Hls.DefaultConfig.loader({}); 
-        
-        // customLoader.prototype.loadInternal = customLoadInternal;
 
+        readystatechangeHook(response) {
+          console.log("data arrived");
+
+          const { context, loader: xhr, stats } = this;
+          if (!context || !xhr) {
+            return;
+          }
+          const readyState = xhr.readyState;
+          const config = this.config;
+
+          if (
+            readyState === 4 &&
+            xhr.responseURL.indexOf("video-encripted.key") > 0 &&
+            context.responseType === "arraybuffer"
+          ) {
+            xhr.onreadystatechange = null;
+            xhr.onprogress = null;
+            const status = xhr.status;
+            // http status between 200 to 299 are all successful
+            if (status >= 200 && status < 300) {
+              stats.loading.end = Math.max(
+                self.performance.now(),
+                stats.loading.first
+              );
+              let data = xhr.response;
+              let target = new Uint8Array(data);
+              // 受信したデータを復号化
+              for (let i = 0; i < 16; i++) {
+                target[i] = target[i] ^ 0xff;
+              }
+              data = target.buffer;
+
+              let len = data.byteLength;
+              stats.loaded = stats.total = len;
+
+              if (!this.callbacks) {
+                return;
+              }
+              const onProgress = this.callbacks.onProgress;
+              if (onProgress) {
+                onProgress(stats, context, data, xhr);
+              }
+              if (!this.callbacks) {
+                return;
+              }
+              const response = {
+                url: xhr.responseURL,
+                data: data,
+              };
+              this.callbacks.onSuccess(response, stats, context, xhr);
+            }
+            return;
+          }
+          this.readystatechange();
+        }
+      }
+
+      // カスタムローダ用のConfig. Credential 等を設定する
+      var config = {
+        xhrSetup: function (xhr, url) {
+          xhr.withCredentials = true; // do send cookie
+          xhr.setRequestHeader("Authorization", "hogehoge"); // 認証トークンなど
+        },
+      };
+
+      var video = document.getElementById("video");
+
+      if (Hls.isSupported()) {
         // customLoaderを渡してHlsを初期化
-        hls = new Hls({debug:true, loader: customLoader});
-        // hls = new Hls({debug: true, loader: Hls.DefaultConfig.loader});
-// 
-        hls.loadSource('./IMG_0005/IMG_0005.m3u8');
+        config.debug = true;
+        config.loader = customLoader;
+
+        hls = new Hls(config);
+        hls.loadSource("./IMG_0005/IMG_0005.m3u8");
         hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED,function() {
-          //video.play();
-      });
-     }
-     // hls.js is not supported on platforms that do not have Media Source Extensions (MSE) enabled.
-     // When the browser has built-in HLS support (check using `canPlayType`), we can provide an HLS manifest (i.e. .m3u8 URL) directly to the video element throught the `src` property.
-     // This is using the built-in support of the plain video element, without using hls.js.
-      else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = './IMG_0005/IMG_0005.m3u8';
-        video.addEventListener('canplay',function() {
+        hls.on(Hls.Events.MANIFEST_PARSED, function () {
+          video.play();
+        });
+      }
+      // hls.js is not supported on platforms that do not have Media Source Extensions (MSE) enabled.
+      // When the browser has built-in HLS support (check using `canPlayType`), we can provide an HLS manifest (i.e. .m3u8 URL) directly to the video element throught the `src` property.
+      // This is using the built-in support of the plain video element, without using hls.js.
+      else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        document.getElementById("message").innerHTML = "Not Supported";
+        video.src = "./IMG_0006/IMG_0005.m3u8";
+        video.addEventListener("canplay", function () {
           video.play();
         });
       }
